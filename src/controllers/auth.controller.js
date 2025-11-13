@@ -13,7 +13,7 @@ exports.register = async (req, res) => {
       .query("SELECT id FROM users WHERE email = @email");
 
     if (check.recordset.length > 0) {
-      return res.status(400).json({ error: "Email đã được đăng ký" });
+      return res.status(400).json({ error: "Email has been registered" });
     }
 
     const hash = await bcrypt.hash(password, 10);
@@ -38,9 +38,9 @@ exports.register = async (req, res) => {
         VALUES (@user_id, @provider, @password_hash)
       `);
 
-    res.json({ message: "Đăng ký thành công" });
+    res.json({ message: "Registered successfully" });
   } catch (err) {
-    console.error("❌ Lỗi khi đăng ký:", err);
+    console.error("❌ Error during registration:", err);
     res.status(500).json({ error: err.message });
   }
 };
@@ -59,12 +59,11 @@ exports.login = async (req, res) => {
       `);
 
     if (user.recordset.length === 0)
-      return res.status(400).json({ error: "Email chưa được đăng ký" });
+      return res.status(400).json({ error: "Email is not registered" });
 
     const row = user.recordset[0];
     const valid = await bcrypt.compare(password, row.password_hash);
-    if (!valid) return res.status(401).json({ error: "Sai mật khẩu" });
-
+    if (!valid) return res.status(401).json({ error: "Incorrect password" });
     const token = jwt.sign(
       { id: row.id, email: row.email },
       process.env.JWT_SECRET,
@@ -80,12 +79,12 @@ exports.login = async (req, res) => {
       `);
 
     res.json({
-      message: "Đăng nhập thành công",
+      message: "Login successful",
       token,
       user: { id: row.id, email: row.email, display_name: row.display_name }
     });
   } catch (err) {
-    console.error("❌ Lỗi khi đăng nhập:", err);
+    console.error("❌ Error during login:", err);
     res.status(500).json({ error: err.message });
   }
 };

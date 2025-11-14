@@ -15,10 +15,14 @@ exports.protect = async (req, res, next) => {
       // Xác thực token
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-      // Gán thông tin đã giải mã từ token vào req.user.
-      // Các thông tin này (id, email) là bất biến hoặc hiếm khi thay đổi.
-      // Điều này giúp tránh một lượt truy vấn DB trên mỗi request.
-      req.user = { id: decoded.id, email: decoded.email };
+      // Lấy thông tin user từ DB và gán vào req.user (không bao gồm password_hash)
+      const pool = await poolPromise;
+      const result = await pool.request()
+        .input("id", decoded.id)
+        .query("SELECT id, email, display_name FROM users WHERE id = @id");
+      
+      req.user = result.recordset[0];
+
       next();
     } catch (error) {
       console.error(error);

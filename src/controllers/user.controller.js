@@ -7,11 +7,9 @@ exports.getProfile = async (req, res) => {
     const pool = await poolPromise;
     const result = await pool.request()
       .input("id", sql.UniqueIdentifier, req.user.id)
-      .query(`SELECT id, email, display_name, avatar_url, is_email_verified, created_at FROM users WHERE id = @id`);
-
+      .query(`SELECT * FROM vw_UserProfiles WHERE user_id = @id`);
     if (result.recordset.length === 0)
       return error(res, 404, "Không tìm thấy người dùng");
-
     success(res, result.recordset[0], "Lấy profile thành công");
   } catch (err) {
     error(res, 500, err.message);
@@ -20,21 +18,20 @@ exports.getProfile = async (req, res) => {
 
 // ========== CẬP NHẬT PROFILE ==========
 exports.updateProfile = async (req, res) => {
-  const { display_name, avatar_url } = req.body;
+  // Lấy các trường có thể cập nhật từ body.
+  // avatar_url được loại trừ một cách có chủ đích vì nó được quản lý bởi endpoint /api/profile/upload-avatar.
+  const { bio, location, website } = req.body;
+
   try {
     const pool = await poolPromise;
     await pool.request()
       .input("id", sql.UniqueIdentifier, req.user.id)
-      .input("display_name", sql.NVarChar, display_name || null)
-      .input("avatar_url", sql.NVarChar, avatar_url || null)
+      .input("bio", sql.NVarChar, bio)
+      .input("location", sql.NVarChar, location)
+      .input("website", sql.NVarChar, website)
       .query(`
-        UPDATE users
-        SET display_name = @display_name,
-            avatar_url = @avatar_url,
-            updated_at = SYSDATETIMEOFFSET()
-        WHERE id = @id
+        EXEC sp_UpdateUserProfile @user_id = @id, @bio = @bio, @location = @location, @website = @website;
       `);
-
     res.json({ success: true, message: "Cập nhật profile thành công" });
   } catch (err) {
     console.error("❌ Lỗi khi cập nhật profile:", err);
@@ -58,7 +55,6 @@ exports.changeEmail = async (req, res) => {
             updated_at = SYSDATETIMEOFFSET()
         WHERE id = @id
       `);
-
     res.json({ success: true, message: "Đổi email thành công" });
   } catch (err) {
     console.error("❌ Lỗi khi đổi email:", err);

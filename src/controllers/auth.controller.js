@@ -4,29 +4,27 @@ const { poolPromise } = require("../utils/db");
 
 exports.register = async (req, res) => {
   const { email, password, display_name } = req.body;
+  const final_display_name = display_name || email.split('@')[0];
+
   try {
     const pool = await poolPromise;
-
     // Kiểm tra email trùng
     const check = await pool.request()
       .input("email", email)
       .query("SELECT id FROM users WHERE email = @email");
-
     if (check.recordset.length > 0) {
       return res.status(400).json({ error: "Email has been registered" });
     }
 
     const hash = await bcrypt.hash(password, 10);
-
     const user = await pool.request()
       .input("email", email)
-      .input("display_name", display_name || null)
+      .input("display_name", final_display_name)
       .query(`
         INSERT INTO users (email, display_name)
         OUTPUT inserted.id
         VALUES (@email, @display_name)
       `);
-
     const userId = user.recordset[0].id;
 
     await pool.request()
@@ -37,7 +35,6 @@ exports.register = async (req, res) => {
         INSERT INTO auth_providers (user_id, provider, password_hash)
         VALUES (@user_id, @provider, @password_hash)
       `);
-
     res.json({ message: "Registered successfully" });
   } catch (err) {
     console.error("❌ Error during registration:", err);
@@ -57,10 +54,8 @@ exports.login = async (req, res) => {
         JOIN auth_providers a ON a.user_id = u.id
         WHERE u.email = @email AND a.provider = 'local'
       `);
-
     if (user.recordset.length === 0)
       return res.status(400).json({ error: "Email is not registered" });
-
     const row = user.recordset[0];
     const valid = await bcrypt.compare(password, row.password_hash);
     if (!valid) return res.status(401).json({ error: "Incorrect password" });
@@ -69,7 +64,6 @@ exports.login = async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
-
     await pool.request()
       .input("user_id", row.id)
       .input("session_token", token)
@@ -77,7 +71,6 @@ exports.login = async (req, res) => {
         INSERT INTO sessions (user_id, session_token)
         VALUES (@user_id, @session_token)
       `);
-
     res.json({
       message: "Login successful",
       token,

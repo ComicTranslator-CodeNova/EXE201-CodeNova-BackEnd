@@ -1,5 +1,5 @@
 const express = require("express");
-const auth = require("../middlewares/auth.middleware");
+const { protect } = require("../middlewares/auth.middleware");
 const {
   getProfile,
   updateProfile,
@@ -8,8 +8,8 @@ const {
 
 const router = express.Router();
 
-router.get("/profile", auth, getProfile);
-router.put("/profile", auth, updateProfile);
-router.put("/change-email", auth, changeEmail);
+router.get("/profile", protect, getProfile);
+router.put("/profile", protect, updateProfile);
+router.put("/change-email", protect, changeEmail);
 
 module.exports = router;

@@ -46,24 +46,39 @@ exports.login = async (req, res) => {
   const { email, password } = req.body;
   try {
     const pool = await poolPromise;
+    
+    // === (PHẦN SỬA LỖI Ở ĐÂY) ===
+    // Phải JOIN 3 bảng để lấy được tên role
     const user = await pool.request()
       .input("email", email)
       .query(`
-        SELECT u.id, u.email, u.display_name, a.password_hash
+        SELECT 
+          u.id, 
+          u.email, 
+          u.display_name, 
+          a.password_hash,
+          r.name AS role 
         FROM users u
         JOIN auth_providers a ON a.user_id = u.id
+        LEFT JOIN user_roles ur ON u.id = ur.user_id
+        LEFT JOIN roles r ON ur.role_id = r.id
         WHERE u.email = @email AND a.provider = 'local'
       `);
+    // === (KẾT THÚC PHẦN SỬA) ===
+
     if (user.recordset.length === 0)
       return res.status(400).json({ error: "Email is not registered" });
+    
     const row = user.recordset[0];
     const valid = await bcrypt.compare(password, row.password_hash);
     if (!valid) return res.status(401).json({ error: "Incorrect password" });
+    
     const token = jwt.sign(
       { id: row.id, email: row.email },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
+    
     await pool.request()
       .input("user_id", row.id)
       .input("session_token", token)
@@ -71,10 +86,17 @@ exports.login = async (req, res) => {
         INSERT INTO sessions (user_id, session_token)
         VALUES (@user_id, @session_token)
       `);
+      
+    // Trả về role cho frontend
     res.json({
       message: "Login successful",
       token,
-      user: { id: row.id, email: row.email, display_name: row.display_name }
+      user: { 
+        id: row.id, 
+        email: row.email, 
+        display_name: row.display_name, 
+        role: row.role // <-- Phải thêm 'role: row.role' ở đây
+      }
     });
   } catch (err) {
     console.error("❌ Error during login:", err);

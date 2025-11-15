@@ -7,7 +7,21 @@ exports.getProfile = async (req, res) => {
     const pool = await poolPromise;
     const result = await pool.request()
       .input("id", sql.UniqueIdentifier, req.user.id)
-      .query(`SELECT * FROM vw_UserProfiles WHERE user_id = @id`);
+      .query(`
+        SELECT
+            u.id AS user_id,
+            u.email,
+            u.role,
+            up.display_name,
+            up.nickname,
+            up.avatar_url,
+            up.bio,
+            up.location,
+            up.website
+        FROM users u
+        LEFT JOIN user_profiles up ON u.id = up.user_id
+        WHERE u.id = @id
+      `);
     if (result.recordset.length === 0)
       return error(res, 404, "Không tìm thấy người dùng");
     success(res, result.recordset[0], "Lấy profile thành công");

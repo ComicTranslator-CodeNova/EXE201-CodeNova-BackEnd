@@ -7,6 +7,10 @@ const { API_PREFIX } = require("./config/constants");
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use("/admin", require("./routes/admin.routes"));
+app.use("/payment", require("./routes/payment.routes"));
+
+
 
 app.get("/", async (req, res) => {
   try {

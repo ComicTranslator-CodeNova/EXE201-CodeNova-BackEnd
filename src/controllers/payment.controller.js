@@ -103,59 +103,59 @@ exports.createMomoPayment = async (req, res) => {
   }
 };
 
-// ========== MOMO IPN CALLBACK (FINAL VERSION) ==========
+// ========== MOMO IPN CALLBACK (FINAL VERSION CLEAN) ==========
 exports.handleMomoIPN = async (req, res) => {
   try {
     const data = req.body;
 
-    const {
-      partnerCode,
-      accessKey,
-      orderId,
-      requestId,
-      amount,
-      orderInfo,
-      orderType,
-      transId,
-      resultCode,
-      message,
-      payType,
-      responseTime,
-      extraData,
-      signature
-    } = data;
+    // MoMo KHÔNG GỬI accessKey trong body => ta phải tự thêm vào để verify
+    data.accessKey = momo.accessKey;
 
-    // ========== 1. Verify signature ==========
-    const rawSignature =
-      `accessKey=${accessKey}` +
-      `&amount=${amount}` +
-      `&extraData=${extraData}` +
-      `&message=${message}` +
-      `&orderId=${orderId}` +
-      `&orderInfo=${orderInfo}` +
-      `&orderType=${orderType}` +
-      `&partnerCode=${partnerCode}` +
-      `&payType=${payType}` +
-      `&requestId=${requestId}` +
-      `&responseTime=${responseTime}` +
-      `&resultCode=${resultCode}` +
-      `&transId=${transId}`;
+    const signatureFields = [
+      "accessKey",
+      "amount",
+      "extraData",
+      "message",
+      "orderId",
+      "orderInfo",
+      "orderType",
+      "partnerCode",
+      "payType",
+      "requestId",
+      "responseTime",
+      "resultCode",
+      "transId"
+    ];
+
+    // Build correct raw signature
+    const rawSignature = signatureFields
+      .map(key => `${key}=${data[key] ?? ""}`)
+      .join("&");
+
+    console.log("Raw signature BUILD:", rawSignature);
 
     const expectedSignature = crypto
       .createHmac("sha256", momo.secretKey)
       .update(rawSignature)
       .digest("hex");
 
-    if (expectedSignature !== signature) {
-      console.warn("❌ Sai signature IPN");
+    console.log("Expected:", expectedSignature);
+    console.log("Momo:", data.signature);
+
+    // ========== VERIFY ==========
+    if (expectedSignature !== data.signature) {
+      console.log("❌ Sai signature IPN");
       return res.status(400).json({ message: "invalid signature" });
     }
 
     console.log("✔ Signature hợp lệ!");
 
+    // Kết nối SQL
     const pool = await poolPromise;
 
-    // ========== 2. Lấy transaction theo orderId ==========
+    const { orderId, resultCode, extraData } = data;
+
+    // ========== 2. Tìm transaction ==========
     const txRes = await pool.request()
       .input("orderId", sql.NVarChar, orderId)
       .query(`
@@ -171,13 +171,13 @@ exports.handleMomoIPN = async (req, res) => {
 
     const tx = txRes.recordset[0];
 
-    // Nếu đã xử lý rồi, trả OK luôn
+    // Tránh xử lý 2 lần
     if (tx.status === "success" || tx.status === "failed") {
       return res.status(200).json({ message: "already processed" });
     }
 
-    // ========== 3. Nếu thanh toán thất bại ==========
-    if (resultCode !== 0) {
+    // ========== 3. Thanh toán thất bại ==========
+    if (resultCode != 0) {
       await pool.request()
         .input("id", sql.UniqueIdentifier, tx.id)
         .input("status", sql.NVarChar, "failed")
@@ -196,7 +196,9 @@ exports.handleMomoIPN = async (req, res) => {
     let extra = {};
     try {
       extra = JSON.parse(Buffer.from(extraData, "base64").toString("utf8"));
-    } catch {}
+    } catch {
+      console.log("⚠ Không parse được extraData");
+    }
 
     const userId = extra.userId || tx.user_id;
     const planId = extra.planId;
@@ -213,7 +215,7 @@ exports.handleMomoIPN = async (req, res) => {
         WHERE id = @id
       `);
 
-    // ========== 5. Hủy subscription cũ nếu có ==========
+    // ========== 5. Hủy subscription cũ ==========
     await pool.request()
       .input("user_id", sql.UniqueIdentifier, userId)
       .query(`
@@ -224,8 +226,8 @@ exports.handleMomoIPN = async (req, res) => {
 
     // ========== 6. Tạo subscription mới ==========
     const now = new Date();
-    const startAt = now;  
-    const endAt = new Date(now.getFullYear(), now.getMonth() + 1, 0); // cuối tháng
+    const startAt = now;
+    const endAt = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
     await pool.request()
       .input("id", sql.UniqueIdentifier, uuidv4())
@@ -249,4 +251,5 @@ exports.handleMomoIPN = async (req, res) => {
     return res.status(500).json({ message: "server error" });
   }
 };
+
 
